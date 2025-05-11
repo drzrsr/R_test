@@ -202,8 +202,56 @@ def add_license_route():
         app.logger.error(f"An unexpected error occurred during add_license: {e}")
         return jsonify({"error": "An unexpected server error occurred", "details": str(e)}), 500
 
+# API endpoint za dobijanje liste svih aktivnih licenci
+@app.route('/active_licenses', methods=['GET'])
+def get_active_licenses_route():
+    """
+    API endpoint za dobijanje liste svih aktivnih licenci.
+    """
+    active_licenses_list = []
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # SQL upit za odabir svih licenci gde je is_active TRUE
+        # Biramo specifične kolone koje želimo da vratimo klijentu
+        # Možete dodati ORDER BY da sortirate rezultate, npr. po datumu kreiranja
+        query = sql.SQL("""
+            SELECT license_key, description, created_at, expires_at 
+            FROM licenses 
+            WHERE is_active = TRUE
+            ORDER BY created_at DESC;
+        """) # Primer sortiranja: najnovije prvo
+        
+        cur.execute(query)
+        licenses_data = cur.fetchall()  # Dobijamo sve redove koji odgovaraju upitu
+        
+        cur.close()
+        conn.close()
 
-# Zdravstvena provera (health check) endpoint - dobra praksa
+        if licenses_data:
+            # Konvertujemo listu torki (tuples) u listu rečnika (dictionaries)
+            # radi lakšeg JSON odgovora i čitljivosti
+            for row in licenses_data:
+                active_licenses_list.append({
+                    "license_key": row[0],
+                    "description": row[1],
+                    "created_at": row[2].isoformat() if row[2] else None, # Formatiramo datetime u ISO string
+                    "expires_at": row[3].isoformat() if row[3] else None  # Formatiramo datetime u ISO string
+                })
+        
+        # Vraćamo listu aktivnih licenci i njihov ukupan broj
+        return jsonify({"count": len(active_licenses_list), "active_licenses": active_licenses_list}), 200
+
+    except psycopg2.Error as e:
+        # Logovanje greške baze podataka
+        app.logger.error(f"Database error in get_active_licenses: {e}")
+        return jsonify({"error": "Database query failed", "details": str(e)}), 500
+    except Exception as e:
+        # Logovanje opšte greške servera
+        app.logger.error(f"An unexpected error occurred in get_active_licenses: {e}")
+        return jsonify({"error": "An unexpected server error occurred", "details": str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy"}), 200
